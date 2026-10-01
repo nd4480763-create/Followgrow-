@@ -128,7 +128,119 @@ function getSvc(){let p=document.getElementById('platform').value,n=document.get
 function tierForQty(s,q){let ts=(s[2]||[]).slice().sort((a,b)=>a.qty-b.qty);if(!ts.length)return {qty:1000,rate:s[1]||0,off:0};return ts.find(t=>q<=t.qty)||ts[ts.length-1]}
 function updateRate(){let el=document.getElementById('qty');if(!el)return;let q=Math.max(0,Number(String(el.value||'').replace(/,/g,''))||0);let s=getSvc();let baseRate=Math.max(0,Number(s[1])||0);let t=tierForQty(s,q||1);let off=Math.max(0,Number(t.off)||0);let ratePer1K=baseRate*(1-off/100);let total=q*ratePer1K/1000;document.getElementById('rate').textContent=money(ratePer1K);document.getElementById('rateText').textContent=`1K ${s[0]} — ${money(ratePer1K)}${off?` (${off}% OFF)`:''}`;document.getElementById('total').textContent=money(total)}
 function calc(){let el=document.getElementById('qty');if(!el)return;let raw=String(el.value||'').replace(/,/g,'');let q=Math.max(0,Number(raw)||0);el.value=q?String(q):'';updateRate()}
-function goPay(){let s=getSvc(),q=Number(String(document.getElementById('qty').value||'').replace(/,/g,''))||0,target=document.getElementById('target').value.trim();if(q<1||!target)return alert('Quantity और Target Link भरें');let t=tierForQty(s,q),baseRate=Math.max(0,Number(s[1])||0),off=Math.max(0,Number(t.off)||0),rate=baseRate*(1-off/100),amount=q*rate/1000;current={p:document.getElementById('platform').value,n:s[0],rate:rate,qty:q,target,amount:amount,tier:t};localStorage.setItem('fg_current',JSON.stringify(current));document.getElementById('payAmount').textContent=money(current.amount);openPage('payment')}
+async function goPay() {
+  let s = getSvc();
+
+  let q = Number(
+    String(document.getElementById('qty').value || '')
+      .replace(/,/g, '')
+  ) || 0;
+
+  let target =
+    document.getElementById('target').value.trim();
+
+  if (q < 1 || !target) {
+    return alert('Quantity और Target Link भरें');
+  }
+
+  let t = tierForQty(s, q);
+  let baseRate = Math.max(0, Number(s[1]) || 0);
+  let off = Math.max(0, Number(t.off) || 0);
+  let rate = baseRate * (1 - off / 100);
+  let amount = q * rate / 1000;
+
+  current = {
+    p: document.getElementById('platform').value,
+    n: s[0],
+    rate: rate,
+    qty: q,
+    target: target,
+    amount: amount,
+    tier: t
+  };
+
+  localStorage.setItem(
+    'fg_current',
+    JSON.stringify(current)
+  );
+
+  let orderId =
+    'FG' +
+    Date.now().toString() +
+    Math.floor(Math.random() * 1000);
+
+  localStorage.setItem(
+    'fg_cashfree_order_id',
+    orderId
+  );
+
+  let phone =
+    String(localStorage.getItem('fg_phone') || '9999999999')
+      .replace(/\D/g, '')
+      .slice(-10);
+
+  if (phone.length !== 10) {
+    phone = '9999999999';
+  }
+
+  try {
+    const response = await fetch(
+      '/api/create-order',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          order_id: orderId,
+          order_amount: Number(amount.toFixed(2)),
+          customer_name: 'FollowGrow User',
+          customer_email: 'customer@example.com',
+          customer_phone: phone
+        })
+      }
+    );
+
+    const data = await response.json();
+if (!response.ok) {
+  throw new Error(
+    data?.error ||
+    data?.message ||
+    'Cashfree order create failed'
+  );
+}
+
+if (!data.payment_session_id) {
+  throw new Error(
+    'Payment session ID nahi mila'
+  );
+}
+
+if (typeof Cashfree !== 'function') {
+  throw new Error(
+    'Cashfree SDK load nahi hua'
+  );
+}
+
+const cashfree = Cashfree({
+  mode: 'sandbox'
+});
+
+cashfree.checkout({
+  paymentSessionId: data.payment_session_id,
+  redirectTarget: '_self'
+});
+
+} catch (error) {
+  console.error(error);
+
+  alert(
+    'Payment start nahi hua:\n' +
+    (error.message || 'Unknown error')
+  );
+}
+  }
+    
 function makeUPIUri(amount){
   let upi=localStorage.getItem('fg_upi')||'amanbinda96@nyes';
   let q='pa='+encodeURIComponent(upi)+'&pn='+encodeURIComponent('FollowGrow')+'&am='+encodeURIComponent(Number(amount).toFixed(2))+'&cu=INR';
