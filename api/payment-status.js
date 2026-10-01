@@ -22,7 +22,6 @@ export default async function handler(req, res) {
       "/payments",
       {
         method: "GET",
-
         headers: {
           "Accept": "application/json",
           "x-api-version": "2025-01-01",
