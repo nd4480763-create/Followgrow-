@@ -240,7 +240,98 @@ cashfree.checkout({
   );
 }
   }
-    
+async function handleCashfreeReturn(){
+  const params=new URLSearchParams(location.search);
+  const cashfreeOrderId=String(params.get('order_id')||'').trim();
+
+  if(!/^FG[A-Za-z0-9_-]{6,80}$/.test(cashfreeOrderId)) return;
+
+  const creditKey='fg_cashfree_credited_'+cashfreeOrderId;
+
+  if(localStorage.getItem(creditKey)==='1'){
+    history.replaceState({},'',location.pathname);
+    return;
+  }
+
+  try{
+    const r=await fetch(
+      '/api/payment-status?order_id='+
+      encodeURIComponent(cashfreeOrderId)
+    );
+
+    const data=await r.json();
+
+    if(!r.ok){
+      throw new Error(
+        data?.error || 'Payment status check failed'
+      );
+    }
+
+    if(String(data?.status||'').toUpperCase()==='SUCCESS'){
+
+      let saved=localStorage.getItem('fg_current');
+      let paidOrder=null;
+
+      if(saved){
+        try{
+          paidOrder=JSON.parse(saved);
+        }catch(e){}
+      }
+
+      if(paidOrder && Number(paidOrder.amount)>0){
+
+        const amount=Number(paidOrder.amount);
+
+        walletBalance+=amount;
+        updateWallet();
+
+        const o={
+          id:'FG'+Date.now().toString().slice(-8),
+          platform:paidOrder.p,
+          service:paidOrder.n,
+          qty:Number(paidOrder.qty)||0,
+          rate:Number(paidOrder.rate)||0,
+          target:paidOrder.target||'',
+          amount:amount,
+          status:'Pending',
+          paymentStatus:'Payment Complete',
+          created:new Date().toLocaleString('en-IN'),
+          cashfreeOrderId:cashfreeOrderId
+        };
+
+        orders.unshift(o);
+        save();
+
+        localStorage.removeItem('fg_current');
+        localStorage.setItem(creditKey,'1');
+        current=null;
+
+        alert(
+          'Payment SUCCESS! '+
+          money(amount)+
+          ' wallet me add ho gaya.'
+        );
+
+        openPage('orders');
+      }
+
+    }else if(
+      String(data?.status||'').toUpperCase()==='FAILED'
+    ){
+      alert('Payment failed. Wallet me paisa add nahi hua.');
+    }
+
+  }catch(error){
+    console.error(error);
+
+    alert(
+      'Payment verify nahi ho paya. My Orders dobara check karein.'
+    );
+
+  }finally{
+    history.replaceState({},'',location.pathname);
+  }
+  }    
 function makeUPIUri(amount){
   let upi=localStorage.getItem('fg_upi')||'amanbinda96@nyes';
   let q='pa='+encodeURIComponent(upi)+'&pn='+encodeURIComponent('FollowGrow')+'&am='+encodeURIComponent(Number(amount).toFixed(2))+'&cu=INR';
@@ -457,5 +548,6 @@ function openSupport(){openPage('help')}
 function contactWhatsApp(){location.href='https://wa.me/?text='+encodeURIComponent('FOLLOWGROW Customer Support - '+location.href)}
 function copySupport(){copyShare(location.href+'#help')}
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}))}
-updateWallet();updateFund();renderFundPaymentScreen();loadQuickSettings();
+handleCashfreeReturn();updateWallet();
+updateFund();renderFundPaymentScreen();loadQuickSettings();
 </script></body></html>
